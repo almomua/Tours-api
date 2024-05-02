@@ -10,6 +10,8 @@ const jwt = require('jsonwebtoken');
 
 const { promisify } = require('util');
 
+const sendEmail = require('../utils/email');
+
 const signToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET_KEY, {
         expiresIn: process.env.JWT_EXPIRE,
@@ -101,3 +103,30 @@ exports.restrictTo = (...args) => {
         next();
     };
 };
+
+exports.forgotPassword = asyncHandler(async (req, res, next) => {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+        return next(new AppError('user not found', 404));
+    }
+    const resetToken = user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+    try {
+        const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${resetToken}`;
+        await sendEmail({
+            email: user.email,
+            subject: 'reset your password',
+            message: resetURL,
+        });
+        res.status(200).json({
+            status: 'success',
+            message: 'email sent successfully',
+        });
+    } catch (error) {
+        user.forgotPasswordToken = undefined;
+        user.forgotPasswordTokenExpires = undefined;
+        await user.save({ validateBeforeSave: false });
+        return next(new AppError(error, 500));
+    }
+});
+exports.resetPassword = asyncHandler(async (req, res, next) => {});
