@@ -12,6 +12,8 @@ const { promisify } = require('util');
 
 const sendEmail = require('../utils/email');
 
+const crypto = require('crypto');
+
 const signToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET_KEY, {
         expiresIn: process.env.JWT_EXPIRE,
@@ -129,4 +131,46 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
         return next(new AppError(error, 500));
     }
 });
-exports.resetPassword = asyncHandler(async (req, res, next) => {});
+exports.resetPassword = asyncHandler(async (req, res, next) => {
+    const hashedToken = crypto
+        .createHash('sha256')
+        .update(req.params.token)
+        .digest('hex');
+    console.log(hashedToken);
+    const user = await User.findOne({
+        forgotPasswordToken: hashedToken,
+        forgotPasswordTokenExpires: { $gt: Date.now() },
+    });
+    if (!user) {
+        return next(new AppError('token is invalid or expired', 400));
+    }
+    user.password = req.body.password;
+    user.passwordConfirm = req.body.passwordConfirm;
+    user.forgotPasswordToken = undefined;
+    user.forgotPasswordTokenExpires = undefined;
+    await user.save();
+    const token = signToken(user._id);
+    res.status(200).json({
+        status: 'success',
+        message: 'password reset successfully',
+        token: token,
+    });
+});
+
+exports.updatePassword = asyncHandler(async (req, res, next) => {
+    const user = await User.findById(req.user.id).select('+password');
+    
+    const login = await bcrypt.compare(req.body.password, user.password);
+    if (!login) {
+        return next(new AppError('password is incorrect', 401));
+    }
+    user.password = req.body.newPassword;
+    user.passwordConfirm = req.body.newPasswordConfirm;
+    await user.save();
+    const token = signToken(user._id);
+    res.status(200).json({
+        status: 'success',
+        message: 'password updated successfully',
+        token: token,
+    });
+});

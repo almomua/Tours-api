@@ -1,7 +1,20 @@
-
 const fs = require('fs');
+
+const AppError = require('../utils/AppError');
+const asyncHandler = require('../utils/asyncHandler');
+
+const User = require('../models/usersModel');
+
+const filterObj = (obj, ...allowedFields) => {
+    const newObj = {};
+    obj.map((el) => {
+        if (allowedFields.includes(el)) newObj[el] = obj[el];
+    });
+    return newObj;
+};
+
 const tours = JSON.parse(
-    fs.readFileSync(`${__dirname}/../dev-data/data/tours-simple.json`)
+    fs.readFileSync(`${__dirname}/../dev-data/data/tours-simple.json`),
 );
 exports.getAllUsers = (req, res) => {
     res.status(200).json({
@@ -30,10 +43,10 @@ exports.createUser = (req, res) => {
         (err) => {
             if (err)
                 return res.status(400).json({ message: 'failure', err: err });
-        }
+        },
     );
     res.status(201).json({ message: 'success', data: newTour });
-}
+};
 exports.updateUser = (req, res) => {
     const id = +req.params.id;
     if (id > tours.length)
@@ -50,3 +63,29 @@ exports.deleteUser = (req, res) => {
     tours.splice(tours.indexOf(tour), 1);
     res.status(200).json({ status: 'success', data: tour });
 };
+
+exports.updateMe = asyncHandler(async (req, res, next) => {
+    if (req.body.password || req.body.passwordConfirm) {
+        return next(
+            new AppError(
+                'this route is not for password updates, please use /updatePassword',
+                400,
+            ),
+        );
+    }
+    const filteredBody = filterObj(req.body, 'name', 'email');
+    const updatedUser = await User.findByIdAndUpdate(
+        req.user.id,
+        filteredBody,
+        {
+            new: true,
+            runValidators: true,
+        },
+    );
+    res.status(200).json({
+        status: 'success',
+        data: {
+            user: updatedUser,
+        },
+    });
+});

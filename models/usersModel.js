@@ -25,11 +25,10 @@ const userSchema = new mongoose.Schema(
         photo: {
             type: String,
         },
-        role :{
-            type : String,
-            enum : ['user' , 'guide' , 'lead-guide' , 'admin'],
-            default : 'user'
-
+        role: {
+            type: String,
+            enum: ['user', 'guide', 'lead-guide', 'admin'],
+            default: 'user',
         },
         password: {
             type: String,
@@ -74,6 +73,11 @@ userSchema.methods.changedPasswordAfter = function (JWTTimeStamp) {
     }
     return false;
 };
+userSchema.pre('save', function (next) {
+    if (!this.isModified('password') || this.isNew) return next();
+    this.passwordCreatedAt = Date.now() - 1000;
+    next();
+});
 
 userSchema.methods.createPasswordResetToken = function () {
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -85,5 +89,11 @@ userSchema.methods.createPasswordResetToken = function () {
     return resetToken;
 };
 
+userSchema.methods.correctPassword = async function (
+    candidatePassword,
+    userPassword,
+) {
+    return await bcrypt.compare(candidatePassword, userPassword);
+};
 const User = mongoose.model('users', userSchema);
 module.exports = User;
